@@ -6,6 +6,19 @@ Auto-captures `uncaughtException` and `unhandledRejection`, ships rich runtime c
 
 Works with **plain Node, Express, Fastify, NestJS, Koa, Hono, Bun, Deno (with compat shim)**.
 
+## 🎫 Get your token
+
+Pionne is **mobile-first**: you sign up, create projects, and watch your error feed **from the Pionne mobile app**, not a web dashboard.
+
+1. **Download the app**:
+   - 🍎 [App Store](https://apps.apple.com/app/pionne) *(coming soon)*
+   - 🤖 [Google Play](https://play.google.com/store/apps/details?id=fr.agkgcreations.pionne) *(coming soon)*
+2. Create your account (30 days free, no card required)
+3. **+ New project** → pick **Node.js** → copy the token displayed (`pio_live_…`)
+4. Paste it into `Pionne.init({ token })` below
+
+⚠️ The token is only shown **once** at project creation — store it as `PIONNE_TOKEN` in your env / secrets manager, never commit it.
+
 ## Install
 
 ```bash
