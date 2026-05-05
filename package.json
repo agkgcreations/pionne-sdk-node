@@ -1,0 +1,61 @@
+{
+  "name": "@pionne/node",
+  "version": "0.1.1",
+  "description": "Error monitoring SDK for Node.js — Pionne. Auto-captures uncaught exceptions and unhandled rejections, ships rich runtime context (Node version, OS, hostname, pid).",
+  "license": "MIT",
+  "author": "AGKG Creations",
+  "homepage": "https://pionne.agkgcreations.fr",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/agkgcreations/pionne-sdk-node.git"
+  },
+  "bugs": {
+    "url": "https://github.com/agkgcreations/pionne-sdk-node/issues"
+  },
+  "keywords": [
+    "pionne",
+    "node",
+    "nodejs",
+    "express",
+    "fastify",
+    "nestjs",
+    "error-monitoring",
+    "crash-reporting",
+    "sentry-alternative",
+    "observability"
+  ],
+  "main": "dist/index.cjs",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.ts",
+  "source": "src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.cjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run typecheck && npm run build"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "tsup": "^8.3.0",
+    "typescript": "^5.5.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
