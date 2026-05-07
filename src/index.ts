@@ -1,6 +1,13 @@
 import * as os from 'node:os';
 import * as process from 'node:process';
 
+import {
+  endSession as _endSession,
+  flipFromEvent,
+  getCurrentSessionId,
+  startSession as _startSession,
+} from './sessions';
+
 export type Level = 'fatal' | 'error' | 'warning' | 'info';
 export type MechanismType =
   | 'uncaughtException'
@@ -46,6 +53,12 @@ export interface PionneOptions {
   userIdAnon?: string;
   tags?: Record<string, string>;
   maxStackFrames?: number;
+  /**
+   * Release Health — opens a session at init() with status='ok', flips to
+   * 'crashed'/'errored' if a fatal/error fires through the global handlers.
+   * The dashboard derives crash-free user rate per release. Default: true.
+   */
+  releaseHealth?: boolean;
 }
 
 const DEFAULT_ENDPOINT = 'https://pionne.agkgcreations.fr/api/ingest';
@@ -54,7 +67,7 @@ const SDK_NAME = 'pionne.node';
 const SDK_VERSION = '0.1.0';
 
 type ResolvedConfig = Required<
-  Omit<PionneOptions, 'beforeSend' | 'userIdAnon' | 'tags' | 'release'>
+  Omit<PionneOptions, 'beforeSend' | 'userIdAnon' | 'tags' | 'release' | 'releaseHealth'>
 > & {
   beforeSend?: PionneOptions['beforeSend'];
   userIdAnon?: string;
@@ -168,6 +181,7 @@ function installUncaughtHandler(): void {
       // Fire-and-forget: process is going to die anyway. Best we can do is
       // try to flush before exit, but Node will tear down imminently.
       void send(event);
+      flipFromEvent(event.level, event.mechanism?.type ?? 'uncaughtException');
     }
   };
   process.on('uncaughtException', onUncaught);
@@ -177,7 +191,10 @@ function installRejectionHandler(): void {
   onRejection = (reason: unknown) => {
     const err = reason instanceof Error ? reason : new Error(String(reason));
     const event = buildEvent(err, 'error', 'unhandledRejection', false);
-    if (event) void send(event);
+    if (event) {
+      void send(event);
+      flipFromEvent(event.level, event.mechanism?.type ?? 'unhandledRejection');
+    }
   };
   process.on('unhandledRejection', onRejection);
 }
@@ -214,6 +231,19 @@ export const Pionne = {
 
     if (config.captureUncaughtExceptions) installUncaughtHandler();
     if (config.captureUnhandledRejections) installRejectionHandler();
+
+    // Release Health — open a session unless the host opted out.
+    if (options.releaseHealth !== false) {
+      _startSession({
+        endpoint: config.endpoint,
+        token: config.token,
+        release: config.release,
+        environment: config.environment,
+        appVersion: staticContext.app_version,
+        osName: staticContext.os_name,
+        userIdAnon: config.userIdAnon,
+      });
+    }
   },
 
   captureException(err: unknown, extra?: Partial<PionneEvent>): void {
@@ -264,6 +294,18 @@ export const Pionne = {
     onRejection = null;
     config = null;
     staticContext = {};
+  },
+
+  // ─── Release Health ───────────────────────────────────────────────────
+
+  /** Manually end the current session (status='exited'). */
+  endSession(): void {
+    _endSession();
+  },
+
+  /** UUID of the current open session (for diagnostics). */
+  getSessionId(): string | null {
+    return getCurrentSessionId();
   },
 };
 
