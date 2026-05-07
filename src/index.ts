@@ -1,6 +1,7 @@
 import * as os from 'node:os';
 import * as process from 'node:process';
 
+import { RateLimiter, validateEndpoint, validateToken } from './security';
 import {
   endSession as _endSession,
   flipFromEvent,
@@ -59,6 +60,8 @@ export interface PionneOptions {
    * The dashboard derives crash-free user rate per release. Default: true.
    */
   releaseHealth?: boolean;
+  /** Token-bucket rate limit (events/sec). Default 10, set 0 to disable. */
+  maxEventsPerSecond?: number;
 }
 
 const DEFAULT_ENDPOINT = 'https://pionne.agkgcreations.fr/api/ingest';
@@ -67,7 +70,7 @@ const SDK_NAME = 'pionne.node';
 const SDK_VERSION = '0.1.0';
 
 type ResolvedConfig = Required<
-  Omit<PionneOptions, 'beforeSend' | 'userIdAnon' | 'tags' | 'release' | 'releaseHealth'>
+  Omit<PionneOptions, 'beforeSend' | 'userIdAnon' | 'tags' | 'release' | 'releaseHealth' | 'maxEventsPerSecond'>
 > & {
   beforeSend?: PionneOptions['beforeSend'];
   userIdAnon?: string;
@@ -76,6 +79,8 @@ type ResolvedConfig = Required<
 };
 
 let config: ResolvedConfig | null = null;
+let rateLimiter: RateLimiter | null = null;
+let droppedByRateLimit = 0;
 let staticContext: Partial<PionneEvent> = {};
 let onUncaught: ((err: Error) => void) | null = null;
 let onRejection: ((reason: unknown) => void) | null = null;
@@ -156,6 +161,14 @@ function buildEvent(
 }
 
 async function send(event: PionneEvent): Promise<void> {
+  if (rateLimiter && !rateLimiter.allow()) {
+    droppedByRateLimit++;
+    if (process.env.NODE_ENV !== 'production' && droppedByRateLimit % 50 === 1) {
+      console.warn(`[Pionne] rate-limit reached (${droppedByRateLimit} events dropped). Bump maxEventsPerSecond if intentional.`);
+    }
+    return;
+  }
+
   if (!config) return;
   try {
     // Node >=18 has global `fetch`. We rely on it instead of pulling in
@@ -201,14 +214,21 @@ function installRejectionHandler(): void {
 
 export const Pionne = {
   init(options: PionneOptions): void {
-    if (!options?.token || !options.token.startsWith('pio_live_')) {
-      if (process.env.NODE_ENV !== 'production') {
-        console.warn(
-          '[Pionne] Missing or invalid token (must start with pio_live_).',
-        );
+    try {
+      const isDev = process.env.NODE_ENV !== 'production';
+      if (!options?.token || !validateToken(options.token)) {
+        if (isDev) {
+          console.warn('[Pionne] Missing or invalid token (expected pio_live_<≥16 chars>, no placeholders).');
+        }
+        return;
       }
-      return;
-    }
+      const endpoint = options.endpoint ?? DEFAULT_ENDPOINT;
+      if (!validateEndpoint(endpoint, isDev)) {
+        console.warn('[Pionne] Refusing non-HTTPS endpoint in production:', endpoint);
+        return;
+      }
+      const rps = options.maxEventsPerSecond ?? 10;
+      rateLimiter = rps > 0 ? new RateLimiter(rps, rps) : null;
 
     const autoContext = options.autoContext ?? true;
     staticContext = autoContext ? gatherStaticContext() : {};
@@ -243,6 +263,10 @@ export const Pionne = {
         osName: staticContext.os_name,
         userIdAnon: config.userIdAnon,
       });
+    }
+    } catch (e) {
+      console.warn('[Pionne] init failed silently — monitoring disabled.', e);
+      config = null;
     }
   },
 
