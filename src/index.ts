@@ -62,9 +62,22 @@ export interface PionneOptions {
   releaseHealth?: boolean;
   /** Token-bucket rate limit (events/sec). Default 10, set 0 to disable. */
   maxEventsPerSecond?: number;
+  /**
+   * Opt-in: resolve approximate server geography (city, region, country) once
+   * at startup via a free IP→location lookup, and attach it to every event
+   * under `contexts.geo`. Off by default for privacy.
+   */
+  sendGeography?: boolean;
+  /**
+   * Override the IP→geography endpoint. Must return JSON with at least
+   * `city`, `region`, `country` (or `country_name`), and `country_code`
+   * fields. Default: `https://ipapi.co/json/`.
+   */
+  geographyEndpoint?: string;
 }
 
 const DEFAULT_ENDPOINT = 'https://pionne.agkgcreations.fr/api/ingest';
+const DEFAULT_GEO_ENDPOINT = 'https://ipapi.co/json/';
 const DEFAULT_MAX_STACK = 50;
 const SDK_NAME = 'pionne.node';
 const SDK_VERSION = '0.1.0';
@@ -187,6 +200,45 @@ async function send(event: PionneEvent): Promise<void> {
   }
 }
 
+/**
+ * Fire-and-forget IP→geo lookup. Mutates `staticContext.contexts.geo` once it
+ * resolves so subsequent events carry the location. Failures are silent — a
+ * monitoring SDK must never crash or stall the host process.
+ */
+function fetchGeography(endpoint: string): void {
+  if (typeof fetch !== 'function') return;
+  const controller =
+    typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const timeout = controller
+    ? setTimeout(() => controller.abort(), 4000)
+    : null;
+  fetch(endpoint, {
+    method: 'GET',
+    headers: { Accept: 'application/json' },
+    signal: controller?.signal,
+  })
+    .then((res) => (res.ok ? res.json() : null))
+    .then((data: unknown) => {
+      if (!data || typeof data !== 'object') return;
+      const d = data as Record<string, unknown>;
+      const geo: Record<string, string> = {};
+      if (typeof d.city === 'string') geo.city = d.city;
+      if (typeof d.region === 'string') geo.region = d.region;
+      if (typeof d.country_name === 'string') geo.country = d.country_name;
+      else if (typeof d.country === 'string') geo.country = d.country;
+      if (typeof d.country_code === 'string') geo.country_code = d.country_code;
+      if (Object.keys(geo).length === 0) return;
+      const ctx = staticContext.contexts ?? {};
+      staticContext.contexts = { ...ctx, geo };
+    })
+    .catch(() => {
+      // Best-effort: silently ignore lookup failures.
+    })
+    .finally(() => {
+      if (timeout) clearTimeout(timeout);
+    });
+}
+
 function installUncaughtHandler(): void {
   onUncaught = (err: Error) => {
     const event = buildEvent(err, 'fatal', 'uncaughtException', false);
@@ -247,10 +299,13 @@ export const Pionne = {
       userIdAnon: options.userIdAnon,
       tags: options.tags,
       maxStackFrames: options.maxStackFrames ?? DEFAULT_MAX_STACK,
+      sendGeography: options.sendGeography ?? false,
+      geographyEndpoint: options.geographyEndpoint ?? DEFAULT_GEO_ENDPOINT,
     };
 
     if (config.captureUncaughtExceptions) installUncaughtHandler();
     if (config.captureUnhandledRejections) installRejectionHandler();
+    if (config.sendGeography) fetchGeography(config.geographyEndpoint);
 
     // Release Health — open a session unless the host opted out.
     if (options.releaseHealth !== false) {
