@@ -77,6 +77,17 @@ Pionne.setTags({ tier: 'pro' });
 Pionne.setEnabled(false);
 ```
 
+### Bundle ID pinning — N/A on Node
+
+The "Bundle ID" anti-token-theft check on Pionne projects is **mobile only**
+(iOS/Android/RN/Flutter). On Node, your token lives in `.env` / a secrets
+manager / EAS env vars — never in a decompilable binary — so the threat
+doesn't exist. The field is hidden in the mobile dashboard for Node
+projects; **don't set it manually via the API** — the SDK does not send a
+top-level `app_id`, so a non-null `bundle_id` would 403 every event. Use
+`tags` to differentiate deployments instead. See the
+[Bundle ID Pinning docs](https://pionne.agkgcreations.fr/security/bundle-id#backends-sans-bundle_id).
+
 ### Geography (opt-in)
 
 Approximate server location (city, region, country) attached to every event,
@@ -96,8 +107,37 @@ if you have your own.
 
 ## Options
 
-Same shape as `@pionne/web` and `@pionne/react-native`. See the type
-definitions for the full list.
+Same shape as `@pionne/web` and `@pionne/react-native`. Highlights :
+
+| Option                | Type                       | Default                  |
+| --------------------- | -------------------------- | ------------------------ |
+| `token`               | `string` (required)        | —                        |
+| `endpoint`            | `string`                   | Pionne production        |
+| `release`             | `string`                   | unset                    |
+| `environment`         | `string`                   | `NODE_ENV` ou `production` |
+| `enabled`             | `boolean`                  | `true`                   |
+| `captureUncaughtErrors`        | `boolean`        | `true`                   |
+| `captureUnhandledRejections`   | `boolean`        | `true`                   |
+| `tags`                | `Record<string, string>`   | unset                    |
+| `userIdAnon`          | `string`                   | unset                    |
+| `maxStackFrames`      | `number`                   | `50`                     |
+| `beforeSend`          | `(event) => event \| null` | unset (drop if `null`)   |
+| `sendGeography`       | `boolean`                  | `false`                  |
+| `geographyEndpoint`   | `string`                   | `https://ipapi.co/json/` |
+| `releaseHealth`       | `boolean`                  | `true`                   |
+| `maxEventsPerSecond`  | `number`                   | `10`                     |
+
+### Notes
+
+- **`maxEventsPerSecond`** — token-bucket process-wide. Au-delà, les events sont droppés silencieusement. Protège contre une boucle d'erreur dans un worker. `0` désactive (déconseillé sur des serveurs longue durée).
+- **`releaseHealth`** — ouvre une session au `init()`, utile pour les services Node longue durée que tu veux mesurer comme un mobile (crash-free uptime).
+- **`sendGeography`** — opt-in : résout city/region/country côté IP via [ipapi.co](https://ipapi.co/json/) par défaut. Sur un serveur, l'IP source est l'IP publique du serveur lui-même (pas celle d'un user). Customize via `geographyEndpoint` pour pointer sur ta propre lookup ou un proxy interne.
+
+Voir les types TypeScript pour la liste complète.
+
+## Rate limit serveur
+
+L'API Pionne cap **600 req/min/token** (= 10/sec) sur tous les endpoints publics (`/ingest`, `/sessions`, `/feedback`). Au-delà → `HTTP 429` avec un header `Retry-After`. Le SDK fait silencieusement échouer (try/catch interne). Empêche un token leaké (ou un worker qui boucle) de drainer ton infra ou ton quota mensuel. Voir [doc rate limits](https://pionne.agkgcreations.fr/security/rate-limits).
 
 ## License
 

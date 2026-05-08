@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.3.3 — 2026-05-08
+
+### Documentation
+
+- README clarifié : nouveau bloc "Bundle ID pinning — N/A on Node" qui
+  explique que la protection anti-vol-de-token par pinning du Bundle ID
+  est mobile-only (iOS/Android/RN/Flutter), parce que sur un serveur
+  Node le token vit dans `.env` / un secrets manager — jamais dans un
+  binaire décompilable. Ne pas remplir ce champ sur un projet Node dans
+  l'app mobile Pionne — sinon 403 sur 100 % des events. Lien vers la
+  doc complète. Aucun changement de code.
+
+## 0.3.2 — 2026-05-08
+
+### Documentation
+
+- README enrichi : tableau des options complet (avant on renvoyait juste
+  vers les types), notes par option, et nouveau bloc "Rate limit serveur"
+  qui documente le cap 600 req/min/token côté API Pionne. Recommandation
+  pratique d'utiliser `sampleRate` sur les workers high-volume. Aucun
+  changement de code SDK.
+
 ## 0.2.0
 
 Pionne backend got a major security hardening pass. The SDK API is unchanged
