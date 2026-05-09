@@ -77,6 +77,33 @@ Pionne.setTags({ tier: 'pro' });
 Pionne.setEnabled(false);
 ```
 
+### Profiling — preview (coming soon)
+
+Continuous-ish CPU profiling is **shipped on `@pionne/react-native@0.8.0`**
+(Hermes sampler) and is on the roadmap for `@pionne/node` next. The Node
+implementation will use the V8 inspector profiler (`node:inspector`,
+`Profiler.start`/`Profiler.stop`) and ship the resulting CPU profile to
+the same `POST /api/profiles` endpoint.
+
+The API will mirror RN exactly:
+
+```ts
+// Coming in @pionne/node ~v0.4.0
+await Pionne.profile('checkoutHandler', async () => {
+  await processOrder(orderId);
+}, { route: 'POST /api/checkout' });
+```
+
+Same backend, same retention (raw 7 d, aggregates 90 d), same flame graph
+view + cross-release regression chart in the mobile dashboard. If you want
+profiling **today** on the server, you can post CPU profiles to the
+endpoint directly — the JSON shape is documented at
+[pionne.agkgcreations.fr/profiling/intro](https://pionne.agkgcreations.fr/profiling/intro).
+
+Heads-up : V8 profiling has a 3–8 % CPU overhead during capture. We'll
+default to manual transaction-scoped (start/stop) rather than continuous
+to keep that cost off your hot path.
+
 ### Bundle ID pinning — N/A on Node
 
 The "Bundle ID" anti-token-theft check on Pionne projects is **mobile only**
