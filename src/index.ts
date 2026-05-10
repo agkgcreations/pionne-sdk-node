@@ -187,7 +187,7 @@ async function send(event: PionneEvent): Promise<void> {
     // Node >=18 has global `fetch`. We rely on it instead of pulling in
     // node-fetch / undici as a dependency.
     if (typeof fetch !== 'function') return;
-    await fetch(config.endpoint, {
+    const res = await fetch(config.endpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -195,10 +195,56 @@ async function send(event: PionneEvent): Promise<void> {
       },
       body: JSON.stringify(event),
     });
+
+    // 401/403/422 = permanent config issues that retries won't fix.
+    // We surface them once per session, even in prod, so the dev sees
+    // a misconfigured token / bundle / validation in their logs
+    // without having to attach a debugger.
+    if (!res.ok && (res.status === 401 || res.status === 403 || res.status === 422)) {
+      if (!warnedPermFailure) {
+        warnedPermFailure = true;
+        let raw = '';
+        try { raw = await res.text(); } catch { /* ignore */ }
+        type ErrorEnvelope = { message?: string; expected_format?: string };
+        let parsed: ErrorEnvelope | null = null;
+        try { parsed = JSON.parse(raw) as ErrorEnvelope; } catch { /* not JSON */ }
+        const sentAppId = (event as { app_id?: string }).app_id ?? '<unset>';
+        const serverMsg = parsed?.message ?? raw.slice(0, 200);
+
+        if (res.status === 403 && /bundle\s*id/i.test(serverMsg)) {
+          console.warn(
+            `[Pionne] Bundle ID mismatch — your project rejects events from app_id="${sentAppId}". ` +
+            `Server expected "${parsed?.expected_format ?? 'unknown'}" (1st char masked for safety). ` +
+            `Fix it in your Pionne project Settings → Bundle ID, or clear the field to disable the check. ` +
+            `Subsequent rejections will be silent for this session.`,
+          );
+        } else if (res.status === 401) {
+          console.warn(
+            `[Pionne] Token rejected (401). Check that PIONNE_TOKEN matches your project token ` +
+            `(starts with "pio_live_…"). Server said: ${serverMsg}. ` +
+            `Subsequent rejections will be silent for this session.`,
+          );
+        } else if (res.status === 422) {
+          console.warn(
+            `[Pionne] Event rejected (422 validation): ${serverMsg}. ` +
+            `Sent app_id="${sentAppId}". Subsequent rejections will be silent for this session.`,
+          );
+        } else {
+          console.warn(
+            `[Pionne] Event rejected (status=${res.status}): ${serverMsg}. ` +
+            `Sent app_id="${sentAppId}". Subsequent rejections will be silent for this session.`,
+          );
+        }
+      }
+    }
   } catch {
     // Best-effort: a monitoring SDK must never crash the host process.
   }
 }
+
+// Flag that gates the permanent-failure warning to one log per session.
+// Reset on `Pionne.uninstall()` so a re-init can re-warn if needed.
+let warnedPermFailure = false;
 
 /**
  * Fire-and-forget IP→geo lookup. Mutates `staticContext.contexts.geo` once it
@@ -373,6 +419,7 @@ export const Pionne = {
     onRejection = null;
     config = null;
     staticContext = {};
+    warnedPermFailure = false;
   },
 
   // ─── Release Health ───────────────────────────────────────────────────
