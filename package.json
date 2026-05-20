@@ -1,7 +1,7 @@
 {
   "name": "@pionne/node",
-  "version": "0.3.6",
-  "description": "Error monitoring SDK for Node.js \u2014 Pionne. Auto-captures uncaught exceptions and unhandled rejections, ships runtime context (Node, OS, hostname, pid), and tracks Release Health (crash-free user rate per release).",
+  "version": "0.3.7",
+  "description": "Error monitoring SDK for Node.js — Pionne. Auto-captures uncaught exceptions and unhandled rejections, ships runtime context (Node, OS, hostname, pid), and tracks Release Health (crash-free user rate per release).",
   "license": "MIT",
   "author": "AGKG Creations",
   "homepage": "https://pionne.agkgcreations.fr",
