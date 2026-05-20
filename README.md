@@ -117,8 +117,8 @@ top-level `app_id`, so a non-null `bundle_id` would 403 every event. Use
 
 ### Geography (opt-in)
 
-Approximate server location (city, region, country) attached to every event,
-just like Sentry. Off by default for privacy — flip `sendGeography` to enable:
+Approximate server location (city, region, country) attached to every event.
+Off by default for privacy — flip `sendGeography` to enable:
 
 ```ts
 Pionne.init({
